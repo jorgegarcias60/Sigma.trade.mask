@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.9.0
+// @version      1.9.1
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -442,30 +442,43 @@
       background: rgb(0, 0, 0) !important;
     }` : ``}
 
-    /* === Compact dashboard tables (v1.9.0) ===
+    /* === Compact dashboard tables (v1.9.1) ===
        The dashboard's Position and Orders tables (class table-list_table__) default to ~79px
-       row height with 8px vertical padding on every td. That's a lot of space when you have
-       33 open positions. Compress vertical padding and tighten line-height so you can see
-       3x as many rows without scrolling.
+       row height with 8px vertical padding on every td. With 33 open positions that's a lot
+       of vertical real estate. This compresses to ~50px uniform rows by:
+       1) Shrinking td padding 8px -> 2px and font-size 15.4px -> 12px / line-height 1.5 -> 1.2
+       2) Flattening multi-line <p> content (e.g. the Quantity cell renders "Stock : 1" and
+          "Contract: 4" as two stacked <p>s — we set display:inline so they collapse onto one
+          line, separated by a non-breaking space via p + p::before content).
+       Symbol cell (logo + ticker) is untouched — its content is structured as flex/grid by
+       Sigma and a global flex/inline-block rule on .table-data_td__ children would invert it.
+       The <p>-only rule is narrow enough to leave it alone.
        Expandable rows: each Position row starts with a chevron (.table-data_expand_arrow__
        in the .table-data_close__ state). Clicking expands the position into its legs —
        each leg is rendered as a separate sibling tr appended after the parent. Our rule
-       only touches .table-data_td__ padding/line-height, which applies uniformly to both
-       the summary row and the leg rows, so expand still works and the legs remain readable.
-       Header row (.table-header_table_header__) also compacted to match. */
+       only touches .table-data_td__ padding/line-height + <p> display, so expand still works
+       and the leg rows render compact under the same rule. */
     [class*="table-list_table__"] tbody [class*="table-data_td__"] {
-      padding: 3px 10px !important;
-      font-size: 12.5px !important;
-      line-height: 1.25 !important;
-    }
-    [class*="table-list_table__"] tbody [class*="table-data_td__"] > div {
+      padding: 2px 10px !important;
+      font-size: 12px !important;
       line-height: 1.2 !important;
+    }
+    [class*="table-list_table__"] tbody [class*="table-data_td__"] p {
+      margin: 0 !important;
+      padding: 0 !important;
+      line-height: 1.2 !important;
+      display: inline !important;
+    }
+    /* Visual gap between two consecutive inline <p> elements in the same cell. */
+    [class*="table-list_table__"] tbody [class*="table-data_td__"] p + p::before {
+      content: '\\00a0\\00a0' !important;
     }
     [class*="table-list_table__"] thead th,
     [class*="table-header_table_header__"] {
       padding: 4px 10px !important;
       font-size: 10.5px !important;
       letter-spacing: 0.3px !important;
+      line-height: 1.2 !important;
     }
 
     /* === Hide the orange underlying-price line ===
