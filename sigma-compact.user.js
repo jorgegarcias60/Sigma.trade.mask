@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.8.3
-// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides (strike column stays transparent to avoid a vertical seam), uniform 24px rows with subtle 5%-white row separators (replaces Sigma's bright gray strike-column border), transparent icon column (no ITM tint at the chain edges), SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset (stacks above ITM and ATM tints — hover anywhere lights up calls + strike + puts together), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
+// @version      1.9.0
+// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
 // @supportURL   https://github.com/jorgegarcias60/Sigma.trade.mask/issues
@@ -409,7 +409,12 @@
       background: rgb(0, 0, 0) !important;
     }` : ``}
 
-    .card-header {
+    /* Pin ONLY the trade page's stock-info header. The dashboard also uses .card-header
+       (with dashboard_Dashboard__header__ZZ7hr) for its totals row, but pinning that one
+       would cover the Market Performance + Watch List sections that render in normal flow
+       right below it. Scoping with .trade.card > .card-header keeps the chain page pinned
+       and leaves every other page (dashboard, market, terminal, journal, ...) alone. */
+    .trade.card > .card-header {
       position: fixed !important;
       top: ${STICKY_SIGMA_NAVBAR ? SIGMA_NAVBAR_HEIGHT : 0}px !important;
       left: 0 !important;
@@ -436,6 +441,32 @@
       z-index: 50 !important;
       background: rgb(0, 0, 0) !important;
     }` : ``}
+
+    /* === Compact dashboard tables (v1.9.0) ===
+       The dashboard's Position and Orders tables (class table-list_table__) default to ~79px
+       row height with 8px vertical padding on every td. That's a lot of space when you have
+       33 open positions. Compress vertical padding and tighten line-height so you can see
+       3x as many rows without scrolling.
+       Expandable rows: each Position row starts with a chevron (.table-data_expand_arrow__
+       in the .table-data_close__ state). Clicking expands the position into its legs —
+       each leg is rendered as a separate sibling tr appended after the parent. Our rule
+       only touches .table-data_td__ padding/line-height, which applies uniformly to both
+       the summary row and the leg rows, so expand still works and the legs remain readable.
+       Header row (.table-header_table_header__) also compacted to match. */
+    [class*="table-list_table__"] tbody [class*="table-data_td__"] {
+      padding: 3px 10px !important;
+      font-size: 12.5px !important;
+      line-height: 1.25 !important;
+    }
+    [class*="table-list_table__"] tbody [class*="table-data_td__"] > div {
+      line-height: 1.2 !important;
+    }
+    [class*="table-list_table__"] thead th,
+    [class*="table-header_table_header__"] {
+      padding: 4px 10px !important;
+      font-size: 10.5px !important;
+      letter-spacing: 0.3px !important;
+    }
 
     /* === Hide the orange underlying-price line ===
        chain_table_center_line__ is the orange line at the current price. The substring
