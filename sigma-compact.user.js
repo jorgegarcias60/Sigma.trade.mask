@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.8.1
-// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint that also covers the strike column, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, row hover via box-shadow-inset (stacks above ITM and ATM tints so hover always shows), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
+// @version      1.8.2
+// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides (strike column stays transparent to avoid a vertical seam), uniform 24px rows with subtle 5%-white row separators (replaces Sigma's bright gray strike-column border), transparent icon column (no ITM tint at the chain edges), SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset (stacks above ITM and ATM tints — hover anywhere lights up calls + strike + puts together), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
 // @supportURL   https://github.com/jorgegarcias60/Sigma.trade.mask/issues
@@ -319,6 +319,28 @@
     }
     /* Make Sigma's own per-row ruler tick less prominent — the edge bar replaces it. */
     [class*="chain_table_strike_ruler__"] { display: none !important; }
+    /* Strike cell bottom border: Sigma uses bright gray rgb(164,161,161) which makes the
+       strike column look heavily ruled. Match the 5%-white separator used on calls/puts
+       cells so all three sections have the same subtle row division. */
+    [class*="chain_table_strikeCell__"] {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+    }
+    /* Icon column (chain_table_tagCol__) — leftmost on calls, rightmost on puts. Sigma uses
+       this for position badges. The :has() ITM rule below would also tint it cream on ITM
+       rows, producing a visible cream strip at the chain edges that looks bordered. Keep it
+       transparent always; position badges (e.g. the "-2") still render fine. */
+    [class*="chain_table_tagCol__"] {
+      background-color: transparent !important;
+    }
+    /* Bid (Sell) / Ask (Buy) header suffix — the addBidAskLabels() JS pass appends a span
+       inside Bid/Ask THs. Style it as a muted parenthetical, smaller than the main label. */
+    [data-bidask-suffix] {
+      opacity: 0.55 !important;
+      font-size: 0.85em !important;
+      margin-left: 2px !important;
+      font-weight: 400 !important;
+      letter-spacing: 0 !important;
+    }
     ` : ``}
 
     /* === Full-row ITM tint ===
@@ -574,6 +596,31 @@
     tagBodyRow(putsBody,  atmIdx);
   }
 
+  // ---------- Bid (Sell) / Ask (Buy) header labels (tastytrade-style, v1.8.2) ----------
+  // Sigma owns the header text and writes just "Bid" / "Ask". Tastytrade shows "Bid (Sell)"
+  // and "Ask (Buy)" to disambiguate the trader's perspective. We append a span inside the
+  // existing TH so Sigma's text stays intact (no risk of breaking sort/click handlers).
+  // Idempotent — each TH gets a single child with data-bidask-suffix and we skip if present.
+  function addBidAskLabels() {
+    if (!TASTYTRADE_STYLE) return;
+    const heads = [].concat(
+      Array.from(document.querySelectorAll('[class*="chain_table_left__"]  table thead tr:last-child th')),
+      Array.from(document.querySelectorAll('[class*="chain_table_right__"] table thead tr:last-child th'))
+    );
+    heads.forEach(function (th) {
+      if (th.querySelector('[data-bidask-suffix]')) return;
+      // The TH may contain extra elements (sort arrows). Look at the last word of textContent
+      // — that's "Bid" or "Ask" for those columns. Avoids matching e.g. a hidden tooltip label.
+      const txt = (th.textContent || '').trim();
+      const lastWord = (txt.split(/\s+/).pop() || '').replace(/[^A-Za-z]/g, '');
+      if (lastWord !== 'Bid' && lastWord !== 'Ask') return;
+      const span = document.createElement('span');
+      span.setAttribute('data-bidask-suffix', '1');
+      span.textContent = ' ' + (lastWord === 'Bid' ? '(Sell)' : '(Buy)');
+      th.appendChild(span);
+    });
+  }
+
   // ---------- Cross-section row hover (tastytrade-style, v1.8.1) ----------
   // Sigma's chain is three SEPARATE tables (calls / strike / puts). A pure-CSS :hover only
   // highlights cells within the same table. To get tastytrade-style cross-section row tracking
@@ -624,9 +671,9 @@
   }
 
   // Initial run + retries since the chain may not be mounted yet at document-end.
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 1500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 3000);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },1500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },3000);
 
   // ---------- Re-inject style if Sigma blows it away ----------
   // Also re-runs volume bars + ATM highlight + cross-section hover attach on every DOM mutation
@@ -638,6 +685,7 @@
       applyVolumeBars();
       applyAtmHighlight();
       applyCrossSectionHover();
+      addBidAskLabels();
     }, 250);
   }
   const observer = new MutationObserver(function () {
