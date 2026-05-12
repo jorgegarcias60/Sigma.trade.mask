@@ -1,0 +1,16 @@
+# Claude Code local settings
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Bundles / archives left lying around
+*.zip
