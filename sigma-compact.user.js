@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.7.1
-// @description  Compact, tastytrade-inspired option-chain layout for Sigma Trade. ~2x vertical density with strictly uniform row heights, modern typography (SF Pro / Inter system stack), refined section banners with subtle green/red tinting, uppercase tracked column headers, volume + OI bars (horizontal magnitude fill behind each cell), and row-hover highlight. The Sigma site navbar (with Ctrl+K search) and the stock-info header are pinned at all scroll positions. Price line and price-pill are hidden permanently. Sigma-boundary pills are hidden by default and revealed on hover or click.
+// @version      1.8.3
+// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides (strike column stays transparent to avoid a vertical seam), uniform 24px rows with subtle 5%-white row separators (replaces Sigma's bright gray strike-column border), transparent icon column (no ITM tint at the chain edges), SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset (stacks above ITM and ATM tints — hover anywhere lights up calls + strike + puts together), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
 // @supportURL   https://github.com/jorgegarcias60/Sigma.trade.mask/issues
@@ -47,8 +47,8 @@
   // Volume + OI bars: horizontal background fill behind those cells, scaled to the max
   // value visible. Green for calls volume, red for puts volume, subtle white for OI.
   const VOLUME_BARS         = true;
-  // Section banner gradient (green for CALLS, red for PUTS, fading toward center).
-  // Sigma's default is a heavy 0.9-alpha gradient; this softens it to ~0.18 alpha.
+  // Section banner: solid dark blue (tastytrade-style) instead of heavy green/red gradient.
+  // Section labels become sentence-case ("Calls" / "Puts") without aggressive letter-spacing.
   const SOFT_SECTION_TINT   = true;
   // The orange horizontal line at the underlying price (chain_table_center_line__) — hide it
   // since the price is already shown in the (now sticky) header. Sigma-boundary lines, which
@@ -58,6 +58,23 @@
   // Same reason as the line above: price lives in the sticky header now. Sigma-boundary pills
   // (1σ, 2σ, 3σ) still hide-by-default-show-on-hover via the rules below.
   const HIDE_PRICE_PILL     = true;
+
+  // ---- Tastytrade-style additions (v1.8+) ----
+  // Master toggle for the v1.8 tastytrade-look-and-feel pass. Sentence-case headers, solid
+  // dark-blue section banner, continuous red/green strike-edge bar (red above ATM / green
+  // below ATM), and a subtle orange highlight on the ATM strike row. Flip to false to revert
+  // to v1.7 styling (uppercase headers, soft green/red banner gradient, no ATM highlight).
+  const TASTYTRADE_STYLE    = true;
+  // Section banner background — solid dark blue, like tastytrade's expiration row.
+  const SECTION_BANNER_BG   = 'rgba(28, 49, 77, 1)';
+  // Color of the continuous bar on the strike-column edges. Above-ATM = red, below-ATM = green.
+  // Driven by JS: the script picks the ATM strike (closest to the underlying price) and tags
+  // each strike row with data-side="above" or data-side="below" so the CSS bar colors apply.
+  const STRIKE_EDGE_BAR_WIDTH_PX = 3;
+  const STRIKE_EDGE_ABOVE_COLOR  = 'rgba(220, 38, 38, 0.75)';
+  const STRIKE_EDGE_BELOW_COLOR  = 'rgba(34, 197, 94, 0.75)';
+  // ATM strike row: subtle orange horizontal band. Driven by the same JS pass.
+  const ATM_HIGHLIGHT_COLOR = 'rgba(245, 158, 11, 0.16)';
 
   // ---------- CSS ----------
   const css = `
@@ -180,7 +197,7 @@
     [class*="chain_table_col-80__"] { width: 64px !important; }
     [class*="chain_table_col-90__"] { width: 72px !important; }
 
-    /* === Modern styling (v1.7) === */
+    /* === Modern styling (v1.7) — adjusted by TASTYTRADE_STYLE in v1.8 === */
     ${MODERN_TYPOGRAPHY ? `
     /* System sans-serif stack — matches tastytrade / moomoo look */
     [class*="chain_table_left__"],
@@ -189,27 +206,27 @@
       font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Helvetica Neue", system-ui, sans-serif !important;
       font-feature-settings: "tnum" 1 !important;
     }
-    /* Column headers: muted, uppercase, letter-spaced */
+    /* Column headers: muted, ${TASTYTRADE_STYLE ? 'sentence case' : 'uppercase, letter-spaced'} */
     [class*="chain_table_left__"]  thead th,
     [class*="chain_table_right__"] thead th,
     [class*="chain_table_strike__"] thead th {
       color: rgba(255,255,255,0.45) !important;
-      text-transform: uppercase !important;
-      font-size: 9.5px !important;
-      letter-spacing: 0.9px !important;
-      font-weight: 500 !important;
+      text-transform: ${TASTYTRADE_STYLE ? 'none' : 'uppercase'} !important;
+      font-size: ${TASTYTRADE_STYLE ? '11' : '9.5'}px !important;
+      letter-spacing: ${TASTYTRADE_STYLE ? '0.1' : '0.9'}px !important;
+      font-weight: ${TASTYTRADE_STYLE ? '400' : '500'} !important;
       padding: 6px 8px !important;
     }
-    /* Section banners (CALLS / PUTS / STRIKE row) */
+    /* Section banners (Calls / Puts / Strike row) */
     [class*="chain_table_left__"]  thead tr:first-child th,
     [class*="chain_table_right__"] thead tr:first-child th,
     [class*="chain_table_strike__"] thead tr:first-child th {
-      font-weight: 600 !important;
-      text-transform: uppercase !important;
-      letter-spacing: 2.5px !important;
-      font-size: 10px !important;
-      color: rgba(255,255,255,0.7) !important;
-      padding: 6px 8px !important;
+      font-weight: ${TASTYTRADE_STYLE ? '500' : '600'} !important;
+      text-transform: ${TASTYTRADE_STYLE ? 'none' : 'uppercase'} !important;
+      letter-spacing: ${TASTYTRADE_STYLE ? '0.2' : '2.5'}px !important;
+      font-size: ${TASTYTRADE_STYLE ? '11' : '10'}px !important;
+      color: ${TASTYTRADE_STYLE ? 'rgba(255,255,255,0.85)' : 'rgba(255,255,255,0.7)'} !important;
+      padding: 6px 10px !important;
     }
     /* Strike numbers: subtle weight bump */
     [class*="chain_table_strikeCell__"] {
@@ -230,8 +247,22 @@
     }
     ` : ``}
 
-    ${SOFT_SECTION_TINT ? `
-    /* Tone down the section row's heavy gradient (Sigma's default is 0.9 alpha) */
+    ${SOFT_SECTION_TINT ? (TASTYTRADE_STYLE ? `
+    /* Tastytrade-style banner: solid dark blue across all three sections, no gradient */
+    [class*="chain_table_left__"]  thead tr:first-child th,
+    [class*="chain_table_right__"] thead tr:first-child th,
+    [class*="chain_table_strike__"] thead tr:first-child th {
+      background-image: none !important;
+      background-color: ${SECTION_BANNER_BG} !important;
+    }
+    /* Strike column body: no yellow tint (tastytrade leaves it black) */
+    [class*="chain_table_strikeCell__"] {
+      background: transparent !important;
+      border-left: 1px solid rgba(255,255,255,0.04) !important;
+      border-right: 1px solid rgba(255,255,255,0.04) !important;
+    }
+    ` : `
+    /* v1.7 soft tint: green/red gradient fading toward center */
     [class*="chain_table_left__"]  thead tr:first-child {
       background-image: linear-gradient(90deg, rgba(34, 197, 94, 0.18), transparent 60%) !important;
     }
@@ -247,35 +278,116 @@
       border-left: 1px solid rgba(255,255,255,0.05) !important;
       border-right: 1px solid rgba(255,255,255,0.05) !important;
     }
-    ` : ``}
+    `) : ``}
 
-    ${ROW_HOVER_HIGHLIGHT ? `
-    /* Row-hover sweep — helps the eye trace across CALLS ↔ STRIKE ↔ PUTS */
-    [class*="chain_table_left__"]  tbody td,
-    [class*="chain_table_right__"] tbody td,
+    ${TASTYTRADE_STYLE ? `
+    /* === Strike-column edge bar (tastytrade-style) ===
+       Continuous vertical strip on the left+right edges of each strike cell. Red above the
+       ATM strike, green below — meeting at the ATM row. Driven by data-side="above|below"
+       attributes set by JS (see applyAtmHighlight). The strike-cell already has position:
+       relative from the base CSS, so absolutely-positioned pseudo elements anchor to it. */
+    [class*="chain_table_strikeCell__"]::before,
+    [class*="chain_table_strikeCell__"]::after {
+      content: '' !important;
+      position: absolute !important;
+      top: 0 !important;
+      bottom: 0 !important;
+      width: ${STRIKE_EDGE_BAR_WIDTH_PX}px !important;
+      background: transparent !important;
+      pointer-events: none !important;
+      z-index: 2 !important;
+    }
+    [class*="chain_table_strikeCell__"]::before { left: 0 !important; }
+    [class*="chain_table_strikeCell__"]::after  { right: 0 !important; }
+    [class*="chain_table_strikeCell__"][data-side="above"]::before,
+    [class*="chain_table_strikeCell__"][data-side="above"]::after {
+      background: ${STRIKE_EDGE_ABOVE_COLOR} !important;
+    }
+    [class*="chain_table_strikeCell__"][data-side="below"]::before,
+    [class*="chain_table_strikeCell__"][data-side="below"]::after {
+      background: ${STRIKE_EDGE_BELOW_COLOR} !important;
+    }
+    /* ATM row: subtle orange band that extends across ALL three tables.
+       We tag the strike cell with data-atm, and tag the corresponding TR in calls + puts
+       bodies (by row index) so the band is continuous across CALLS | STRIKE | PUTS. */
+    [class*="chain_table_strikeCell__"][data-atm] {
+      background-color: ${ATM_HIGHLIGHT_COLOR} !important;
+    }
+    [class*="chain_table_left__"]  tbody tr[data-atm] td,
+    [class*="chain_table_right__"] tbody tr[data-atm] td {
+      background-color: ${ATM_HIGHLIGHT_COLOR} !important;
+    }
+    /* Make Sigma's own per-row ruler tick less prominent — the edge bar replaces it. */
+    [class*="chain_table_strike_ruler__"] { display: none !important; }
+    /* Strike cell bottom border: Sigma uses bright gray rgb(164,161,161) which makes the
+       strike column look heavily ruled. Match the 5%-white separator used on calls/puts
+       cells so all three sections have the same subtle row division. */
     [class*="chain_table_strikeCell__"] {
-      transition: background 80ms ease-out !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     }
-    [class*="chain_table_left__"]  tbody tr:hover td,
-    [class*="chain_table_right__"] tbody tr:hover td {
-      background: rgba(120, 160, 220, 0.06) !important;
+    /* Icon column (chain_table_tagCol__) — leftmost on calls, rightmost on puts. Sigma uses
+       this column for position badges (the "-2" red pill etc.). The :has() ITM rule below
+       tints all td in any ITM row cream, including this column, which produces a visible
+       cream strip at the chain edges that looks bordered. We also drop the 1px row-bottom
+       border on tagCol so no horizontal separator shows there.
+       SPECIFICITY: the :has() rule is [class][class] tbody tr:has([class]) td — that is
+       (0,3,3). A plain [class*="chain_table_tagCol__"] selector is (0,1,0) and loses.
+       We chain [chain_table_section__] (also on the calls/puts wrapper) plus a td element
+       selector to reach (0,3,3) and place this rule late enough to win on tie. */
+    [class*="chain_table_left__"][class*="chain_table_section__"]  tbody tr td[class*="chain_table_tagCol__"],
+    [class*="chain_table_right__"][class*="chain_table_section__"] tbody tr td[class*="chain_table_tagCol__"] {
+      background-color: transparent !important;
+      background-image: none !important;
+      border: 0 !important;
     }
-    [class*="chain_table_strikeCell__"]:hover {
-      background: rgba(255, 249, 231, 0.14) !important;
+    /* Bid (Sell) / Ask (Buy) header suffix — the addBidAskLabels() JS pass appends a span
+       inside Bid/Ask THs. Style it as a muted parenthetical, smaller than the main label. */
+    [data-bidask-suffix] {
+      opacity: 0.55 !important;
+      font-size: 0.85em !important;
+      margin-left: 2px !important;
+      font-weight: 400 !important;
+      letter-spacing: 0 !important;
     }
     ` : ``}
 
     /* === Full-row ITM tint ===
        Sigma applies the chain_table_itm__ class only to some cells (Change, Delta, IV, Mid,
-       Bid, Ask), but not to Volume, OI, or the EXT/INT columns the extrinsic script injects.
-       The result is a "broken" striped shadow with gaps. This :has() rule extends the tint
-       across ALL cells in any row that has at least one ITM cell, giving a clean continuous
-       band. background-color (not background shorthand) so it stacks with volume-bar
-       background-image. */
+       Bid, Ask), but not to Volume, OI, the icon column, or the EXT/INT columns injected by
+       sigma-extrinsic.user.js. The :has() rule extends the tint across every cell in any row
+       that has at least one ITM cell, giving a clean continuous band within each side.
+       The strike column is deliberately left transparent — matches tastytrade, and tinting it
+       to follow either side would create a visible vertical seam at the strike-column edge
+       (calls ITM + puts OTM rows would show cream-strike next to black puts cells).
+       background-color (not the background shorthand) stacks with volume-bar background-image
+       and with the box-shadow-inset row-hover below. */
     [class*="chain_table_left__"]  tbody tr:has([class*="chain_table_itm__"]) td,
     [class*="chain_table_right__"] tbody tr:has([class*="chain_table_itm__"]) td {
       background-color: rgba(255, 249, 231, 0.22) !important;
     }
+
+    ${ROW_HOVER_HIGHLIGHT ? `
+    /* Row hover — helps the eye trace across CALLS ↔ STRIKE ↔ PUTS.
+       Implemented two ways:
+         1) Pure-CSS :hover (per-side only). Uses inset box-shadow rather than background-color
+            so it stacks ABOVE the ITM tint — without this the :has() rule would suppress hover
+            on every ITM row (higher specificity).
+         2) JS-driven [data-hover] (cross-section). The calls/strike/puts are three separate
+            tables; CSS can't link a hover in one to highlights in the others. The mouseover
+            handler in applyCrossSectionHover() tags the same-index row in all three tables
+            with data-hover so the entire horizontal "strike row" lights up together — same
+            behavior tastytrade has on their chain. The CSS below applies to both. */
+    [class*="chain_table_left__"]  tbody tr:hover td,
+    [class*="chain_table_right__"] tbody tr:hover td,
+    [class*="chain_table_left__"]  tbody tr[data-hover] td,
+    [class*="chain_table_right__"] tbody tr[data-hover] td {
+      box-shadow: inset 0 0 0 9999px rgba(120, 160, 220, 0.18) !important;
+    }
+    [class*="chain_table_strikeCell__"]:hover,
+    [class*="chain_table_strikeCell__"][data-hover] {
+      box-shadow: inset 0 0 0 9999px rgba(255, 249, 231, 0.16) !important;
+    }
+    ` : ``}
 
     /* === Pinned headers ===
        Sigma's own site navbar (body > header) contains the symbol search (Ctrl+K) and
@@ -420,21 +532,173 @@
     applyBars(putsBody,  findColIdx(putsHead,  'OI'),     'rgba(255, 255, 255, 0.06)', 'left',  'data-oibar');
   }
 
+  // ---------- ATM highlight + strike-edge bar (tastytrade-style, v1.8) ----------
+  // Tags every strike cell with data-side="above|below" relative to the underlying price, and
+  // the ATM cell (closest strike to spot) with data-atm. The corresponding TR in calls + puts
+  // bodies (matched by row index) is also tagged data-atm so the orange ATM band extends
+  // continuously across CALLS | STRIKE | PUTS. CSS in the style block does the actual coloring
+  // via [data-side] / [data-atm] selectors and ::before/::after pseudo elements.
+  function applyAtmHighlight() {
+    if (!TASTYTRADE_STYLE) return;
+    const strikeBody = document.querySelector('[class*="chain_table_strike__"] table tbody');
+    const callsBody  = document.querySelector('[class*="chain_table_left__"]  table tbody');
+    const putsBody   = document.querySelector('[class*="chain_table_right__"] table tbody');
+    if (!strikeBody) return;
+
+    // Underlying price — same selector as sigma-extrinsic.user.js. Sigma renders the price in
+    // a couple of places; this picks the chain-side small price element, not the big main one.
+    const priceEl = document.querySelector('[class*="trade_price__"]:not([class*="trade_priceMain__"])');
+    const underlying = priceEl ? parseFloat((priceEl.textContent || '').replace(/[^0-9.\-]/g, '')) : NaN;
+    if (!isFinite(underlying)) return;
+
+    // Parse each strike. Same defensive logic as the extrinsic script: innerText split on
+    // whitespace, take the last clean numeric token. Avoids the "-2 + 27.5 = -227.5" trap
+    // where a position badge concatenates with the strike in textContent.
+    const rows = Array.from(strikeBody.rows);
+    const strikes = rows.map(function (r) {
+      const cell = r.cells[0];
+      if (!cell) return NaN;
+      const tokens = (cell.innerText || '').split(/\s+/).filter(Boolean);
+      for (let i = tokens.length - 1; i >= 0; i--) {
+        if (/^\d+(\.\d+)?$/.test(tokens[i])) return parseFloat(tokens[i]);
+      }
+      return NaN;
+    });
+
+    // ATM = strike with the smallest |strike - underlying|. Ties resolve to the first match
+    // (lower strike) which matches typical broker convention.
+    let atmIdx = -1;
+    let atmDist = Infinity;
+    for (let i = 0; i < strikes.length; i++) {
+      if (!isFinite(strikes[i])) continue;
+      const d = Math.abs(strikes[i] - underlying);
+      if (d < atmDist) { atmDist = d; atmIdx = i; }
+    }
+    if (atmIdx === -1) return;
+
+    const atmStrike = strikes[atmIdx];
+    rows.forEach(function (r, i) {
+      const cell = r.cells[0];
+      if (!cell) return;
+      const s = strikes[i];
+      if (!isFinite(s)) {
+        cell.removeAttribute('data-side');
+        cell.removeAttribute('data-atm');
+        return;
+      }
+      // "above" = visually above the ATM row in the table = lower strike numbers (rendered
+      // at the top). "below" = visually below the ATM row = higher strike numbers.
+      cell.setAttribute('data-side', s < atmStrike ? 'above' : 'below');
+      if (i === atmIdx) cell.setAttribute('data-atm', '1');
+      else cell.removeAttribute('data-atm');
+    });
+
+    function tagBodyRow(body, idx) {
+      if (!body) return;
+      Array.from(body.rows).forEach(function (r, i) {
+        if (i === idx) r.setAttribute('data-atm', '1');
+        else r.removeAttribute('data-atm');
+      });
+    }
+    tagBodyRow(callsBody, atmIdx);
+    tagBodyRow(putsBody,  atmIdx);
+  }
+
+  // ---------- Bid (Sell) / Ask (Buy) header labels (tastytrade-style, v1.8.2) ----------
+  // Sigma owns the header text and writes just "Bid" / "Ask". Tastytrade shows "Bid (Sell)"
+  // and "Ask (Buy)" to disambiguate the trader's perspective. We append a span inside the
+  // existing TH so Sigma's text stays intact (no risk of breaking sort/click handlers).
+  // Idempotent — each TH gets a single child with data-bidask-suffix and we skip if present.
+  function addBidAskLabels() {
+    if (!TASTYTRADE_STYLE) return;
+    const heads = [].concat(
+      Array.from(document.querySelectorAll('[class*="chain_table_left__"]  table thead tr:last-child th')),
+      Array.from(document.querySelectorAll('[class*="chain_table_right__"] table thead tr:last-child th'))
+    );
+    heads.forEach(function (th) {
+      if (th.querySelector('[data-bidask-suffix]')) return;
+      // The TH may contain extra elements (sort arrows). Look at the last word of textContent
+      // — that's "Bid" or "Ask" for those columns. Avoids matching e.g. a hidden tooltip label.
+      const txt = (th.textContent || '').trim();
+      const lastWord = (txt.split(/\s+/).pop() || '').replace(/[^A-Za-z]/g, '');
+      if (lastWord !== 'Bid' && lastWord !== 'Ask') return;
+      const span = document.createElement('span');
+      span.setAttribute('data-bidask-suffix', '1');
+      span.textContent = ' ' + (lastWord === 'Bid' ? '(Sell)' : '(Buy)');
+      th.appendChild(span);
+    });
+  }
+
+  // ---------- Cross-section row hover (tastytrade-style, v1.8.1) ----------
+  // Sigma's chain is three SEPARATE tables (calls / strike / puts). A pure-CSS :hover only
+  // highlights cells within the same table. To get tastytrade-style cross-section row tracking
+  // (hovering anywhere on a strike-row lights up all three sections together), we attach a
+  // single delegated mouseover listener that tags the same-index row in all three bodies with
+  // data-hover. The CSS above ([data-hover] / :hover combined) renders the inset shadow.
+  // Idempotent: guarded by window.__sigmaCrossHoverAttached so re-injection doesn't double up.
+  function applyCrossSectionHover() {
+    if (!ROW_HOVER_HIGHLIGHT) return;
+    if (window.__sigmaCrossHoverAttached) return;
+    function bodies() {
+      return {
+        calls:  document.querySelector('[class*="chain_table_left__"]  table tbody'),
+        strike: document.querySelector('[class*="chain_table_strike__"] table tbody'),
+        puts:   document.querySelector('[class*="chain_table_right__"] table tbody')
+      };
+    }
+    function clearAll() {
+      document.querySelectorAll('[data-hover]').forEach(function (el) { el.removeAttribute('data-hover'); });
+    }
+    function findRowIdx(target) {
+      const tr = target && target.closest && target.closest('tr');
+      if (!tr) return -1;
+      const body = tr.parentElement;
+      const b = bodies();
+      if (body !== b.calls && body !== b.strike && body !== b.puts) return -1;
+      return Array.from(body.rows).indexOf(tr);
+    }
+    document.addEventListener('mouseover', function (e) {
+      const idx = findRowIdx(e.target);
+      if (idx < 0) { clearAll(); return; }
+      clearAll();
+      const b = bodies();
+      if (b.calls  && b.calls.rows[idx])  b.calls.rows[idx].setAttribute('data-hover', '1');
+      if (b.puts   && b.puts.rows[idx])   b.puts.rows[idx].setAttribute('data-hover', '1');
+      if (b.strike && b.strike.rows[idx]) {
+        const td = b.strike.rows[idx].cells[0];
+        if (td) td.setAttribute('data-hover', '1');
+      }
+    });
+    document.addEventListener('mouseout', function (e) {
+      // If the cursor leaves the chain entirely (relatedTarget isn't inside a chain table), clear.
+      const rt = e.relatedTarget;
+      const stillInChain = rt && rt.closest && rt.closest('[class*="chain_table_"]');
+      if (!stillInChain) clearAll();
+    });
+    window.__sigmaCrossHoverAttached = true;
+  }
+
   // Initial run + retries since the chain may not be mounted yet at document-end.
-  setTimeout(applyVolumeBars, 500);
-  setTimeout(applyVolumeBars, 1500);
-  setTimeout(applyVolumeBars, 3000);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },1500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },3000);
 
   // ---------- Re-inject style if Sigma blows it away ----------
-  // Also re-runs volume bars on every DOM mutation (debounced).
-  let _volTimer = null;
-  function _scheduleVolBars() {
-    clearTimeout(_volTimer);
-    _volTimer = setTimeout(applyVolumeBars, 250);
+  // Also re-runs volume bars + ATM highlight + cross-section hover attach on every DOM mutation
+  // (debounced). The hover attach is idempotent so re-calling is cheap.
+  let _bgTimer = null;
+  function _scheduleBackgroundPasses() {
+    clearTimeout(_bgTimer);
+    _bgTimer = setTimeout(function () {
+      applyVolumeBars();
+      applyAtmHighlight();
+      applyCrossSectionHover();
+      addBidAskLabels();
+    }, 250);
   }
   const observer = new MutationObserver(function () {
     if (!document.querySelector('style[data-sigma-compact]')) applyStyles();
-    _scheduleVolBars();
+    _scheduleBackgroundPasses();
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
 })();
