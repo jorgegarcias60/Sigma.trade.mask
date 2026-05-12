@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.8.0
-// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, row hover, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
+// @version      1.8.1
+// @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint that also covers the strike column, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, row hover via box-shadow-inset (stacks above ITM and ATM tints so hover always shows), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
 // @supportURL   https://github.com/jorgegarcias60/Sigma.trade.mask/issues
@@ -321,33 +321,43 @@
     [class*="chain_table_strike_ruler__"] { display: none !important; }
     ` : ``}
 
-    ${ROW_HOVER_HIGHLIGHT ? `
-    /* Row-hover sweep — helps the eye trace across CALLS ↔ STRIKE ↔ PUTS */
-    [class*="chain_table_left__"]  tbody td,
-    [class*="chain_table_right__"] tbody td,
-    [class*="chain_table_strikeCell__"] {
-      transition: background 80ms ease-out !important;
-    }
-    [class*="chain_table_left__"]  tbody tr:hover td,
-    [class*="chain_table_right__"] tbody tr:hover td {
-      background: rgba(120, 160, 220, 0.06) !important;
-    }
-    [class*="chain_table_strikeCell__"]:hover {
-      background: rgba(255, 249, 231, 0.14) !important;
-    }
-    ` : ``}
-
     /* === Full-row ITM tint ===
        Sigma applies the chain_table_itm__ class only to some cells (Change, Delta, IV, Mid,
-       Bid, Ask), but not to Volume, OI, or the EXT/INT columns the extrinsic script injects.
-       The result is a "broken" striped shadow with gaps. This :has() rule extends the tint
-       across ALL cells in any row that has at least one ITM cell, giving a clean continuous
-       band. background-color (not background shorthand) so it stacks with volume-bar
-       background-image. */
+       Bid, Ask), but not to Volume, OI, the icon column, or the EXT/INT columns injected by
+       sigma-extrinsic.user.js. The :has() rule extends the tint across every cell in any row
+       that has at least one ITM cell, giving a clean continuous band within each side.
+       The strike column is deliberately left transparent — matches tastytrade, and tinting it
+       to follow either side would create a visible vertical seam at the strike-column edge
+       (calls ITM + puts OTM rows would show cream-strike next to black puts cells).
+       background-color (not the background shorthand) stacks with volume-bar background-image
+       and with the box-shadow-inset row-hover below. */
     [class*="chain_table_left__"]  tbody tr:has([class*="chain_table_itm__"]) td,
     [class*="chain_table_right__"] tbody tr:has([class*="chain_table_itm__"]) td {
       background-color: rgba(255, 249, 231, 0.22) !important;
     }
+
+    ${ROW_HOVER_HIGHLIGHT ? `
+    /* Row hover — helps the eye trace across CALLS ↔ STRIKE ↔ PUTS.
+       Implemented two ways:
+         1) Pure-CSS :hover (per-side only). Uses inset box-shadow rather than background-color
+            so it stacks ABOVE the ITM tint — without this the :has() rule would suppress hover
+            on every ITM row (higher specificity).
+         2) JS-driven [data-hover] (cross-section). The calls/strike/puts are three separate
+            tables; CSS can't link a hover in one to highlights in the others. The mouseover
+            handler in applyCrossSectionHover() tags the same-index row in all three tables
+            with data-hover so the entire horizontal "strike row" lights up together — same
+            behavior tastytrade has on their chain. The CSS below applies to both. */
+    [class*="chain_table_left__"]  tbody tr:hover td,
+    [class*="chain_table_right__"] tbody tr:hover td,
+    [class*="chain_table_left__"]  tbody tr[data-hover] td,
+    [class*="chain_table_right__"] tbody tr[data-hover] td {
+      box-shadow: inset 0 0 0 9999px rgba(120, 160, 220, 0.18) !important;
+    }
+    [class*="chain_table_strikeCell__"]:hover,
+    [class*="chain_table_strikeCell__"][data-hover] {
+      box-shadow: inset 0 0 0 9999px rgba(255, 249, 231, 0.16) !important;
+    }
+    ` : ``}
 
     /* === Pinned headers ===
        Sigma's own site navbar (body > header) contains the symbol search (Ctrl+K) and
@@ -548,7 +558,7 @@
       }
       // "above" = visually above the ATM row in the table = lower strike numbers (rendered
       // at the top). "below" = visually below the ATM row = higher strike numbers.
-      cell.setAttribute('data-side', s < atmStrike ? 'above' : (s > atmStrike ? 'below' : 'below'));
+      cell.setAttribute('data-side', s < atmStrike ? 'above' : 'below');
       if (i === atmIdx) cell.setAttribute('data-atm', '1');
       else cell.removeAttribute('data-atm');
     });
@@ -564,17 +574,71 @@
     tagBodyRow(putsBody,  atmIdx);
   }
 
+  // ---------- Cross-section row hover (tastytrade-style, v1.8.1) ----------
+  // Sigma's chain is three SEPARATE tables (calls / strike / puts). A pure-CSS :hover only
+  // highlights cells within the same table. To get tastytrade-style cross-section row tracking
+  // (hovering anywhere on a strike-row lights up all three sections together), we attach a
+  // single delegated mouseover listener that tags the same-index row in all three bodies with
+  // data-hover. The CSS above ([data-hover] / :hover combined) renders the inset shadow.
+  // Idempotent: guarded by window.__sigmaCrossHoverAttached so re-injection doesn't double up.
+  function applyCrossSectionHover() {
+    if (!ROW_HOVER_HIGHLIGHT) return;
+    if (window.__sigmaCrossHoverAttached) return;
+    function bodies() {
+      return {
+        calls:  document.querySelector('[class*="chain_table_left__"]  table tbody'),
+        strike: document.querySelector('[class*="chain_table_strike__"] table tbody'),
+        puts:   document.querySelector('[class*="chain_table_right__"] table tbody')
+      };
+    }
+    function clearAll() {
+      document.querySelectorAll('[data-hover]').forEach(function (el) { el.removeAttribute('data-hover'); });
+    }
+    function findRowIdx(target) {
+      const tr = target && target.closest && target.closest('tr');
+      if (!tr) return -1;
+      const body = tr.parentElement;
+      const b = bodies();
+      if (body !== b.calls && body !== b.strike && body !== b.puts) return -1;
+      return Array.from(body.rows).indexOf(tr);
+    }
+    document.addEventListener('mouseover', function (e) {
+      const idx = findRowIdx(e.target);
+      if (idx < 0) { clearAll(); return; }
+      clearAll();
+      const b = bodies();
+      if (b.calls  && b.calls.rows[idx])  b.calls.rows[idx].setAttribute('data-hover', '1');
+      if (b.puts   && b.puts.rows[idx])   b.puts.rows[idx].setAttribute('data-hover', '1');
+      if (b.strike && b.strike.rows[idx]) {
+        const td = b.strike.rows[idx].cells[0];
+        if (td) td.setAttribute('data-hover', '1');
+      }
+    });
+    document.addEventListener('mouseout', function (e) {
+      // If the cursor leaves the chain entirely (relatedTarget isn't inside a chain table), clear.
+      const rt = e.relatedTarget;
+      const stillInChain = rt && rt.closest && rt.closest('[class*="chain_table_"]');
+      if (!stillInChain) clearAll();
+    });
+    window.__sigmaCrossHoverAttached = true;
+  }
+
   // Initial run + retries since the chain may not be mounted yet at document-end.
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); }, 500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); }, 1500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); }, 3000);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 1500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); }, 3000);
 
   // ---------- Re-inject style if Sigma blows it away ----------
-  // Also re-runs volume bars + ATM highlight on every DOM mutation (debounced).
+  // Also re-runs volume bars + ATM highlight + cross-section hover attach on every DOM mutation
+  // (debounced). The hover attach is idempotent so re-calling is cheap.
   let _bgTimer = null;
   function _scheduleBackgroundPasses() {
     clearTimeout(_bgTimer);
-    _bgTimer = setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); }, 250);
+    _bgTimer = setTimeout(function () {
+      applyVolumeBars();
+      applyAtmHighlight();
+      applyCrossSectionHover();
+    }, 250);
   }
   const observer = new MutationObserver(function () {
     if (!document.querySelector('style[data-sigma-compact]')) applyStyles();
