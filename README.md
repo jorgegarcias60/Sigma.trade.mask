@@ -6,7 +6,7 @@ Tampermonkey userscripts that customize [web.sigma.trade](https://web.sigma.trad
 
 | Script | Version | What it does |
 | --- | --- | --- |
-| [`sigma-compact.user.js`](sigma-compact.user.js) | 1.7.1 | Compact chain: uniform 24px rows, SF Pro / Inter typography, soft section tints, volume/OI bars, row-hover highlight, pinned site navbar + stock-info header (Ctrl+K stays reachable at any scroll). |
+| [`sigma-compact.user.js`](sigma-compact.user.js) | 1.8.0 | Compact, tastytrade-styled chain: uniform 24px rows, SF Pro / Inter typography, solid dark-blue section banner, sentence-case "Calls" / "Puts" labels, continuous red/green vertical bar on strike-column edges (red above ATM / green below), subtle orange ATM-strike row highlight, volume/OI magnitude bars, row-hover, pinned site navbar + stock-info header (Ctrl+K stays reachable at any scroll). |
 | [`sigma-extrinsic.user.js`](sigma-extrinsic.user.js) | 1.3.2 | Injects `EXT` (extrinsic = mid − intrinsic) and `INT` (intrinsic) columns, mirrored around the strike column. Updates live on price/symbol/expiration changes. |
 
 Both scripts target `https://web.sigma.trade/*` and survive Sigma's re-renders via `MutationObserver`. Architecture notes and gotchas: [`docs/sigma-handoff.md`](docs/sigma-handoff.md).
