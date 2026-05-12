@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.8.2
+// @version      1.8.3
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade. Solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides (strike column stays transparent to avoid a vertical seam), uniform 24px rows with subtle 5%-white row separators (replaces Sigma's bright gray strike-column border), transparent icon column (no ITM tint at the chain edges), SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset (stacks above ITM and ATM tints — hover anywhere lights up calls + strike + puts together), pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover.
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -326,11 +326,19 @@
       border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
     }
     /* Icon column (chain_table_tagCol__) — leftmost on calls, rightmost on puts. Sigma uses
-       this for position badges. The :has() ITM rule below would also tint it cream on ITM
-       rows, producing a visible cream strip at the chain edges that looks bordered. Keep it
-       transparent always; position badges (e.g. the "-2") still render fine. */
-    [class*="chain_table_tagCol__"] {
+       this column for position badges (the "-2" red pill etc.). The :has() ITM rule below
+       tints all td in any ITM row cream, including this column, which produces a visible
+       cream strip at the chain edges that looks bordered. We also drop the 1px row-bottom
+       border on tagCol so no horizontal separator shows there.
+       SPECIFICITY: the :has() rule is [class][class] tbody tr:has([class]) td — that is
+       (0,3,3). A plain [class*="chain_table_tagCol__"] selector is (0,1,0) and loses.
+       We chain [chain_table_section__] (also on the calls/puts wrapper) plus a td element
+       selector to reach (0,3,3) and place this rule late enough to win on tie. */
+    [class*="chain_table_left__"][class*="chain_table_section__"]  tbody tr td[class*="chain_table_tagCol__"],
+    [class*="chain_table_right__"][class*="chain_table_section__"] tbody tr td[class*="chain_table_tagCol__"] {
       background-color: transparent !important;
+      background-image: none !important;
+      border: 0 !important;
     }
     /* Bid (Sell) / Ask (Buy) header suffix — the addBidAskLabels() JS pass appends a span
        inside Bid/Ask THs. Style it as a muted parenthetical, smaller than the main label. */
