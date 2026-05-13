@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.2
+// @version      1.10.3
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -386,6 +386,21 @@
     [class*="chain_table_strikeCell__"]:hover,
     [class*="chain_table_strikeCell__"][data-hover] {
       box-shadow: inset 0 0 0 9999px rgba(255, 249, 231, 0.16) !important;
+    }
+    /* Stronger hover on the actively-hovered Bid + Ask cells (the click targets for
+       order entry). Calls layout: tagCol | Change | Delta | EXT | INT | IV | Volume | OI |
+       Mid | Bid | Ask  =>  Bid at nth-child(10), Ask at nth-child(11). Puts is mirrored
+       with the tagCol at the END  =>  Bid at nth-child(1), Ask at nth-child(2).
+       Uses :hover (CSS-native) rather than [data-hover] (JS-driven cross-section) so the
+       extra highlight ONLY appears on the cell the cursor is literally on — not on the
+       mirrored cell on the other side of the chain.
+       Source order places this AFTER the row-hover rule; with equal specificity, later
+       wins, so the brighter tint replaces the row-hover tint on the active cell. */
+    [class*="chain_table_left__"]  tbody td:nth-child(10):hover,
+    [class*="chain_table_left__"]  tbody td:nth-child(11):hover,
+    [class*="chain_table_right__"] tbody td:nth-child(1):hover,
+    [class*="chain_table_right__"] tbody td:nth-child(2):hover {
+      box-shadow: inset 0 0 0 9999px rgba(160, 200, 255, 0.45) !important;
     }
     ` : ``}
 
