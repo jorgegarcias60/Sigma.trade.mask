@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.1
+// @version      1.10.2
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -441,6 +441,27 @@
       z-index: 50 !important;
       background: rgb(0, 0, 0) !important;
     }` : ``}
+
+    /* === Bid/Ask/etc. click-target expansion (v1.10.2) ===
+       Sigma puts the click handler on the inner <span>, not the <td>. With center-aligned
+       text the span only covers about 48% of the cell width — clicking on the cell's left
+       or right padding (8px each side) hits the TD, which has no click handler, and Sigma's
+       order-staging never fires. Felt as "unresponsive bid/ask clicks".
+       Fix: stretch every direct-child span of body cells to fill the TD (100% × 98% coverage).
+       Negative horizontal margin extends the span over the TD's padding; matching padding
+       inside the span preserves the original text position. cursor: pointer makes the click
+       affordance visible. */
+    [class*="chain_table_left__"]  tbody td > span,
+    [class*="chain_table_right__"] tbody td > span {
+      display: block !important;
+      box-sizing: border-box !important;
+      height: 100% !important;
+      line-height: inherit !important;
+      margin: 0 -8px !important;
+      padding: 0 8px !important;
+      width: calc(100% + 16px) !important;
+      cursor: pointer !important;
+    }
 
     /* === Render performance hints (v1.10.0; v1.10.1 dropped a broken rule) ===
        content-visibility: auto tells the browser "skip layout + paint for this element while
