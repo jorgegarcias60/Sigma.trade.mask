@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.3
+// @version      1.10.4
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -70,9 +70,12 @@
   // Color of the continuous bar on the strike-column edges. Above-ATM = red, below-ATM = green.
   // Driven by JS: the script picks the ATM strike (closest to the underlying price) and tags
   // each strike row with data-side="above" or data-side="below" so the CSS bar colors apply.
-  const STRIKE_EDGE_BAR_WIDTH_PX = 3;
-  const STRIKE_EDGE_ABOVE_COLOR  = 'rgba(220, 38, 38, 0.75)';
-  const STRIKE_EDGE_BELOW_COLOR  = 'rgba(34, 197, 94, 0.75)';
+  // v1.10.4: softened from 3px / 0.75 opacity to 2px / 0.4 opacity for a more modern, less
+  // dominant accent. The bar is still clearly visible as an above-vs-below marker but no
+  // longer reads as a bold red/green slab next to the strike numbers.
+  const STRIKE_EDGE_BAR_WIDTH_PX = 2;
+  const STRIKE_EDGE_ABOVE_COLOR  = 'rgba(239, 68, 68, 0.40)';
+  const STRIKE_EDGE_BELOW_COLOR  = 'rgba(34, 197, 94, 0.40)';
   // ATM strike row: subtle orange horizontal band. Driven by the same JS pass.
   const ATM_HIGHLIGHT_COLOR = 'rgba(245, 158, 11, 0.16)';
 
