@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.5
+// @version      1.11.0
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -328,6 +328,46 @@
        (± X)"). At full opacity it overwhelms the chain visually. Fade to 0.25 so it stays
        informational without dominating. Not in the v1.7 handoff doc — added by Sigma later. */
     [class*="chain_table_expected_move__"] { opacity: 0.25 !important; }
+
+    /* === Privacy mode (v1.11.0) ===
+       When body[data-privacy="1"], mask the user's name + account ID + portfolio value in
+       the navbar profile area. -webkit-text-security is Chrome-specific (Sigma is web-only,
+       Chrome-dominant) and replaces each character with a disc — keeps the box width so the
+       UI doesn't reflow, but the actual characters aren't readable.
+       The "Value" LABEL (the <strong>) inside header_value__ stays visible — we only mask
+       the inner <span> that holds the dollar amount. */
+    body[data-privacy="1"] [class*="header_accountInfo__"] > strong,
+    body[data-privacy="1"] [class*="header_accountInfo__"] > span,
+    body[data-privacy="1"] [class*="header_value__"] > span {
+      -webkit-text-security: disc !important;
+      text-security: disc !important;
+    }
+    /* Eye-icon toggle button — slotted just before the profile dropdown */
+    .sigma-privacy-toggle {
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 32px !important;
+      height: 32px !important;
+      margin-right: 8px !important;
+      border: 1px solid rgba(255,255,255,0.15) !important;
+      border-radius: 6px !important;
+      background: transparent !important;
+      color: rgba(255,255,255,0.7) !important;
+      cursor: pointer !important;
+      padding: 0 !important;
+      transition: background 80ms ease-out, color 80ms ease-out !important;
+    }
+    .sigma-privacy-toggle:hover {
+      background: rgba(255,255,255,0.08) !important;
+      color: rgba(255,255,255,0.95) !important;
+    }
+    /* Privacy ON state: amber accent so the user knows it's active */
+    body[data-privacy="1"] .sigma-privacy-toggle {
+      background: rgba(245, 158, 11, 0.15) !important;
+      color: rgba(245, 158, 11, 1) !important;
+      border-color: rgba(245, 158, 11, 0.4) !important;
+    }
     /* Strike cell bottom border: Sigma uses bright gray rgb(164,161,161) which makes the
        strike column look heavily ruled. Match the 5%-white separator used on calls/puts
        cells so all three sections have the same subtle row division. */
@@ -717,6 +757,61 @@
     tagBodyRow(putsBody,  atmIdx);
   }
 
+  // ---------- Privacy toggle (v1.11.0) ----------
+  // Adds a small eye-icon button to the navbar (just before the profile dropdown). Clicking
+  // toggles a body[data-privacy="1"] flag persisted in localStorage. The CSS above uses
+  // -webkit-text-security: disc to mask the name, account ID, and portfolio value when on.
+  // Sigma re-renders the navbar on various events; this function runs from the same observer
+  // tick as the other passes and is idempotent — re-injects the button if Sigma wiped it,
+  // and re-applies the body attribute from localStorage in case Sigma toggled it.
+  const PRIVACY_LS_KEY = 'sigma-privacy-mode';
+  function eyeOpenSVG() {
+    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>';
+  }
+  function eyeClosedSVG() {
+    return '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.88 9.88a3 3 0 1 0 4.24 4.24"/><path d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68"/><path d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+  }
+  function setPrivacyIcon(btn) {
+    const on = document.body.getAttribute('data-privacy') === '1';
+    btn.innerHTML = on ? eyeClosedSVG() : eyeOpenSVG();
+    btn.setAttribute('title', on ? 'Privacy mode ON — click to show values' : 'Privacy mode OFF — click to mask name / account ID / value');
+  }
+  function applyPrivacyFromStorage() {
+    const enabled = localStorage.getItem(PRIVACY_LS_KEY) === '1';
+    if (enabled) document.body.setAttribute('data-privacy', '1');
+    else document.body.removeAttribute('data-privacy');
+  }
+  function injectPrivacyToggle() {
+    const profileBtn = document.querySelector('[class*="header_loggedIn__"]');
+    if (!profileBtn || !profileBtn.parentElement) return;
+    // Idempotent: bail if our button is already in place
+    if (profileBtn.parentElement.querySelector('.sigma-privacy-toggle')) {
+      // Still re-sync icon in case Sigma toggled body attribute
+      const existing = profileBtn.parentElement.querySelector('.sigma-privacy-toggle');
+      setPrivacyIcon(existing);
+      return;
+    }
+    const btn = document.createElement('button');
+    btn.className = 'sigma-privacy-toggle';
+    btn.setAttribute('aria-label', 'Toggle privacy mode');
+    btn.type = 'button';
+    setPrivacyIcon(btn);
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const on = document.body.getAttribute('data-privacy') === '1';
+      if (on) {
+        document.body.removeAttribute('data-privacy');
+        localStorage.setItem(PRIVACY_LS_KEY, '0');
+      } else {
+        document.body.setAttribute('data-privacy', '1');
+        localStorage.setItem(PRIVACY_LS_KEY, '1');
+      }
+      setPrivacyIcon(btn);
+    });
+    profileBtn.parentElement.insertBefore(btn, profileBtn);
+  }
+
   // ---------- Bid (Sell) / Ask (Buy) header labels (tastytrade-style, v1.8.2) ----------
   // Sigma owns the header text and writes just "Bid" / "Ask". Tastytrade shows "Bid (Sell)"
   // and "Ask (Buy)" to disambiguate the trader's perspective. We append a span inside the
@@ -792,9 +887,9 @@
   }
 
   // Initial run + retries since the chain may not be mounted yet at document-end.
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },1500);
-  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); },3000);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); applyPrivacyFromStorage(); injectPrivacyToggle(); },500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); applyPrivacyFromStorage(); injectPrivacyToggle(); },1500);
+  setTimeout(function () { applyVolumeBars(); applyAtmHighlight(); applyCrossSectionHover(); addBidAskLabels(); applyPrivacyFromStorage(); injectPrivacyToggle(); },3000);
 
   // ---------- Re-inject style if Sigma blows it away ----------
   // Also re-runs volume bars + ATM highlight + cross-section hover attach on every DOM mutation
@@ -807,6 +902,8 @@
       applyAtmHighlight();
       applyCrossSectionHover();
       addBidAskLabels();
+      applyPrivacyFromStorage();
+      injectPrivacyToggle();
     }, 250);
   }
   const observer = new MutationObserver(function () {
