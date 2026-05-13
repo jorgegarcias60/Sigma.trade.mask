@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.0
+// @version      1.10.1
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -442,26 +442,24 @@
       background: rgb(0, 0, 0) !important;
     }` : ``}
 
-    /* === Render performance hints (v1.10.0) ===
-       Sigma is the main bottleneck — its React renders the chain (and the dashboard's Position
-       table with 33+ rows) up-front, paying full layout/paint cost even for rows scrolled
-       offscreen. content-visibility: auto tells the browser "skip layout + paint for this
-       element while it's far from the viewport". With contain-intrinsic-size reserving the
-       expected row height, the scrollbar still measures correctly and rows pop in as they
-       approach view. Net effect: faster initial chain mount, smoother scrolling on long
-       chains (SPX "All strikes", 200+ rows) and long position lists.
-       contain: layout style on .trade.card tells the browser that mutations inside the chain
-       (price ticks, Sigma's React updates, our injected attributes) cannot affect layout/style
-       outside the card — so it can skip recomputing siblings on every tick. We leave out
-       contain: paint because it creates a new containing block which can interfere with our
-       position: fixed sticky-header trick. */
+    /* === Render performance hints (v1.10.0; v1.10.1 dropped a broken rule) ===
+       content-visibility: auto tells the browser "skip layout + paint for this element while
+       it's far from the viewport". With contain-intrinsic-size reserving the expected row
+       height, the scrollbar still measures correctly and rows pop in as they approach view.
+       Net: faster initial chain mount, smoother scroll on long chains (SPX "All strikes")
+       and long position lists.
+       NOTE — v1.10.0 had "contain: layout style" on ".trade.card". That created a new
+       containing block for the FIXED-positioned ".card-header" inside it (per CSS Containment
+       spec), so the stock-info bar started pinning relative to the card instead of the
+       viewport — visually overlapping the tabs row below it. Verified live (top jumped from
+       66px to 147px when the rule was applied). Removed in v1.10.1. The content-visibility
+       rules below are safe: chain rows don't contain the fixed header. */
     [class*="chain_table_left__"]  tbody tr,
     [class*="chain_table_right__"] tbody tr,
     [class*="chain_table_strike__"] tbody tr {
       content-visibility: auto !important;
       contain-intrinsic-size: 0 ${ROW_HEIGHT}px !important;
     }
-    .trade.card { contain: layout style !important; }
     /* Dashboard Position + Orders tables: same trick, with the ~50px row height we use. */
     [class*="table-list_table__"] tbody tr {
       content-visibility: auto !important;
