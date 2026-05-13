@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.10.4
+// @version      1.10.5
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -322,6 +322,12 @@
     }
     /* Make Sigma's own per-row ruler tick less prominent — the edge bar replaces it. */
     [class*="chain_table_strike_ruler__"] { display: none !important; }
+    /* Sigma's expected-move ribbon (chain_table_expected_move__) draws a vertical
+       block of pure rgb(255,0,0) / rgb(0,255,0) inside the strike column, marking the
+       expected-move range (the +/- 1 std-dev band visible at top-right as "Expected Move
+       (± X)"). At full opacity it overwhelms the chain visually. Fade to 0.25 so it stays
+       informational without dominating. Not in the v1.7 handoff doc — added by Sigma later. */
+    [class*="chain_table_expected_move__"] { opacity: 0.25 !important; }
     /* Strike cell bottom border: Sigma uses bright gray rgb(164,161,161) which makes the
        strike column look heavily ruled. Match the 5%-white separator used on calls/puts
        cells so all three sections have the same subtle row division. */
