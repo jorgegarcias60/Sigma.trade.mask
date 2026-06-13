@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Extrinsic & Intrinsic Columns
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.3.2
+// @version      1.3.3
 // @description  Adds EXT (extrinsic) and INT (intrinsic) columns to the Sigma Trade option chain, mirrored around the strike. Calls: ... | Delta | EXT | INT | IV | ...   Puts: ... | IV | INT | EXT | Delta | ... Updates live as prices, symbols, or expirations change.
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -54,6 +54,24 @@
       if (row.cells[i].textContent.trim() === label) return i;
     }
     return -1;
+  }
+
+  // PERF (v1.3.3): cache the Mid column index per header element. The Mid column's position is
+  // stable between Sigma rebuilds, but updateValues() ran findColIdxByText('Mid') — a full
+  // header scan — on every debounce tick. Keyed on the header element via WeakMap, so a rebuilt
+  // header (a new element) misses the cache and re-scans automatically. The cheap single-cell
+  // validation re-scans if anything shifted the column under a preserved header element.
+  const _midIdxCache = new WeakMap();
+  function cachedMidIdx(headerTbl) {
+    const row = headerTbl && headerTbl.tHead && headerTbl.tHead.rows[1];
+    if (!row) return -1;
+    const cached = _midIdxCache.get(headerTbl);
+    if (cached != null && row.cells[cached] && row.cells[cached].textContent.trim() === 'Mid') {
+      return cached;
+    }
+    const idx = findColIdxByText(headerTbl, 'Mid');
+    _midIdxCache.set(headerTbl, idx);
+    return idx;
   }
 
   function getHeaderAndBody(sections) {
@@ -141,7 +159,7 @@
   // ---------- Value update ----------
   function updateValues(side, headerTbl, bodyTbl, strikes, underlying) {
     if (!bodyTbl || !bodyTbl.tBodies[0]) return;
-    const midIdx = findColIdxByText(headerTbl, 'Mid');
+    const midIdx = cachedMidIdx(headerTbl);
     if (midIdx === -1) return;
 
     Array.from(bodyTbl.tBodies[0].rows).forEach(function (row, i) {
@@ -300,10 +318,27 @@
   }
 
   const observer = new MutationObserver(schedule);
-  observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+  // PERF (v1.3.3): dropped `characterData: true`. This was the single biggest source of the
+  // "super slow option chain". On a live-ticking chain every streaming price digit (bid/ask/
+  // mid/IV/volume on every row) is a text-node mutation; watching characterData on the whole
+  // body subtree meant the browser's mutation-record machinery ran continuously — hundreds to
+  // thousands of events/sec on a 200-row chain — even though schedule() is debounced. The
+  // EXT/INT columns only need to RE-INJECT on structural changes (new/removed rows = childList),
+  // which this still catches; their VALUES are kept current by the gentle poll below instead of
+  // by reacting to every quote tick. Self-heal (fullResetIfNeeded) keys off a missing header
+  // marker — a childList event — so it is unaffected.
+  observer.observe(document.body, { childList: true, subtree: true });
 
   // Initial runs — staggered to catch the chain mounting after the user clicks the Chains tab.
   setTimeout(update,  500);
   setTimeout(update, 1500);
   setTimeout(update, 3000);
+
+  // PERF (v1.3.3): value-refresh poll. With characterData gone, pure price ticks (which mutate
+  // text nodes, not DOM structure) no longer drive an update. EXT/INT = mid − intrinsic both
+  // move with quotes, so we refresh them on a fixed gentle cadence rather than on every tick.
+  // Routing through schedule() (not update() directly) keeps the fullResetIfNeeded() safety net
+  // and the debounce; the `running` re-entrancy guard prevents overlap with observer-driven
+  // passes. One O(rows) pass per ~1.5s is a tiny fraction of the old per-tick storm.
+  setInterval(schedule, 1500);
 })();
