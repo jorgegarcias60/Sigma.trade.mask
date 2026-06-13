@@ -4,8 +4,8 @@ You are picking up two Tampermonkey userscripts that customize https://web.sigma
 
 ## Files
 
-- `sigma-extrinsic.user.js` (v1.3.2) — injects two new columns into the option chain: **EXT** (extrinsic = mid − intrinsic) and **INT** (intrinsic), mirrored across the strike column. Pure JS DOM injection (Sigma's chain is 3 separate `<table>` elements, can't do via CSS).
-- `sigma-compact.user.js` (v1.7.1) — compact, modern, tastytrade-inspired layout. CSS + small amount of JS for volume bars and click-to-pin marker pills.
+- `sigma-extrinsic.user.js` (v1.3.3) — injects two new columns into the option chain: **EXT** (extrinsic = mid − intrinsic) and **INT** (intrinsic), mirrored across the strike column. Pure JS DOM injection (Sigma's chain is 3 separate `<table>` elements, can't do via CSS).
+- `sigma-compact.user.js` (v1.11.1) — compact, modern, tastytrade-inspired layout. CSS + JS for volume/OI bars, ATM highlight + strike-edge bars, cross-section hover, click-to-pin marker pills, privacy mode.
 
 Both scripts `@match` `https://web.sigma.trade/*` and `@run-at` `document-end`. Both use a `MutationObserver` to survive Sigma's re-renders.
 
@@ -174,6 +174,46 @@ Fix in v1.7.1, two parts:
 ```
 
 Match Sigma's original 0.22-ish alpha so the band looks like it was there from day one. `:has()` is supported in all modern browsers as of 2023.
+
+## Performance (extrinsic v1.3.3 / compact v1.11.1)
+
+User reported the page got "super slow when getting into the option chain." Root cause was a **DOM mutation/write storm on every streaming quote tick**, not any one feature. A 5-lens audit (observers / reflow / per-tick cost / paint / git history) plus adversarial verification converged on these. Fixes preserve every invariant above (idempotency, self-heal, EXT/INT alignment, re-injection-after-rebuild).
+
+**1. (CRITICAL) extrinsic observer watched `characterData` on the whole `document.body` subtree.**
+Every streaming price digit (bid/ask/mid/IV/volume on every row) is a text-node mutation — hundreds–thousands of mutation records/sec on a 200-row chain — so the browser's observer machinery ran continuously even though `schedule()` is debounced. This was the single biggest tax (and the reason an extrinsic script that "never changed" was always a cause).
+- Fix: observer is now `{ childList: true, subtree: true }` (no `characterData`). EXT/INT only need to **re-inject** on structural change (childList), which this still catches. `fullResetIfNeeded()` keys off a missing header marker = a childList event, so self-heal is unaffected.
+- Because pure price ticks no longer drive an update, EXT/INT **values** are refreshed by a gentle `setInterval(schedule, 1500)` poll instead of reacting to every tick. Routed through `schedule()` so it keeps the reset-check + debounce; the `running` re-entrancy guard prevents overlap. ~1.5s value lag on EXT/INT is the accepted trade-off.
+
+**2. (HIGH) compact `applyAtmHighlight()` re-parsed static strikes + re-tagged ~600 rows every pass.**
+Strike prices are immutable between rebuilds, but the pass rebuilt the strikes array (200 `innerText` reads — `innerText` is layout-aware and forces reflow) and re-wrote `data-side`/`data-atm` on all three tables every tick.
+- Fix: strikes are cached on `window.__sigmaAtmCache`, re-parsed only when the ladder changes — detected by a **new tbody element OR a change in the `rowCount|firstCellText|lastCellText` signature** (signature uses reflow-free `textContent`; first/last rows sit away from the ticking price marker so it's tick-stable). **Kept `innerText` for the actual parse** — `textContent` would mis-parse a position-badge row (`-2` + `27.5` → `-227.5`); see strike-parsing gotcha above. Tagging switched to read-guarded writes (`getAttribute`/`hasAttribute` first, write only when wrong) — near-zero writes steady-state, still self-heals if Sigma swaps a row element in place.
+- **Known edge (low-prob, accepted):** if Sigma ever reuses the same tbody on an expiration change with identical count AND identical first/last strikes but different *interior* strikes, the cached strikes go stale until the next structural change → ATM band points one row off. Doesn't happen on a normal monotonic ladder (same symbol = same ladder; different expirations almost always change the count). Interior sample points were rejected because the ATM price marker would churn the signature every tick. If this is ever observed, invalidate the cache more aggressively.
+
+**3. (HIGH) compact `applyVolumeBars()` wrote `style.backgroundImage` on ~800 cells every pass** regardless of change, which also forced off-screen rows back into layout (defeating `content-visibility: auto`). Fix: only write the gradient when the fill % changed >0.05 (tracked in `cell.dataset.barPct`); cleared on the zero branch. Skips ~80–95% of writes steady-state. Also deleted a dead `style.background` legacy-shorthand clear (v1.7.0 era; current code only sets `backgroundImage`).
+
+**4. (MEDIUM) extrinsic re-scanned the header for the Mid column (`findColIdxByText('Mid')`) every pass.** Fix: `cachedMidIdx()` caches the index in a `WeakMap` keyed on the header element, with an O(1) single-cell re-validation; a rebuilt header (new element) or shifted column re-scans automatically.
+
+**Rejected (audit suggested, verification killed):** changing the strike parse `innerText`→`textContent` (breaks badge rows — #2); rAF-batching the volume-bar writes (breaks idempotency under rapid re-calls); converting the `:has()` ITM tint to a JS-set `data-itm` (adds per-tick JS, likely worse than the CSS). Observer-scope narrowing (documentElement/body → chain wrappers) is a real but lower-priority win left for later — removing `characterData` already removed the dominant cost, and narrowing has tbody-rebuild-catch subtleties.
+
+**Note on compact's observer:** it watches `document.documentElement` `{childList, subtree}` — NO `characterData`. So its heavy passes fire on structural/React-commit mutations (burst: symbol/expiration/All-strikes/scroll), not on every price digit. The caches above make each burst pass cheap; narrowing its scope is the next lever if needed.
+
+### The bid/ask-click freeze on big chains is SIGMA's, not ours (measured 2026-06-13)
+
+User reported SPX still "extremely slow" when clicking bid/ask to build a spread, even after the fixes above. Profiled live on the SPX chain (269 strikes, "All" range, price ~7431) **with Tampermonkey fully DISABLED — zero userscripts**, dispatching a real click on a bid cell and capturing `PerformanceObserver('longtask')` + a classifying `MutationObserver`:
+
+- 1st leg click: **240 ms synchronous** in the handler + long tasks `[460, 122, 232]` ms = **~814 ms main-thread blocking**.
+- 2nd leg click (building the vertical): long tasks `[120, 207, 191]` = **~518 ms blocking**.
+- Only **11 / 23 DOM mutations** per click (≈7 in-chain, the rest the `strategy-info` panel) — so it's **not** a mutation storm; it's Sigma doing heavy synchronous compute/React reconciliation per leg on a 269-row chain. The renderer even hit a 30 s CDP screenshot timeout ("frozen") mid-test.
+
+**Conclusion: the per-click freeze is Sigma's own rendering and cannot be fixed from the userscripts.** Our scripts add only a few ms on top (the audit measured ~6–8 ms/pass on 269 rows; the dominant JS item is volume bars at ~4 ms). Don't chase the click freeze in the mask.
+
+Levers that actually matter for it (all outside our code):
+1. **Reduce the strike range** — the "Strike ▲ All" Ant-select at 269 rows is Sigma's worst case; per-click render scales with rendered rows. A focused ±N range is the single biggest win. (This is a Sigma control, not ours.)
+2. Report to Sigma — it's their React re-render/recalc.
+
+Why observer-scope-narrowing does NOT help the click case: the `strategy-info` order/strategy panel (maxLoss/maxProfit/breakeven/POP) that mutates on each leg-click is **inside `.trade.card`** (verified: `tradeCard.contains(panel) === true`), so narrowing our observer to `.trade.card` wouldn't exclude it; narrowing further to the `chain_table_*` wrappers risks missing chain rebuilds (those wrappers are replaced on symbol/expiration change). Given our contribution is a few ms vs Sigma's ~800 ms, scope-narrowing isn't worth the correctness risk for this case. (It would still modestly help the streaming case, but #1 firehose removal already took the dominant cost there.)
+
+One caveat worth a future look: with scripts ON we inject EXT/INT `<td>`s into Sigma's React-managed rows, giving React foreign children to reconcile — this *may* add a little to Sigma's per-click re-render, but scripts-OFF is already ~800 ms, so it's not the user's primary issue.
 
 ## Pending / open items
 

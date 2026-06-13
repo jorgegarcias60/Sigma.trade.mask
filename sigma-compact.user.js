@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Sigma Trade — Compact Chain Layout
 // @namespace    https://github.com/jorgegarcias60/Sigma.trade.mask
-// @version      1.11.0
+// @version      1.11.1
 // @description  Compact, tastytrade-styled option-chain layout for Sigma Trade, plus a compact dashboard layout. Trade page: solid dark-blue section banner with sentence-case "Calls" / "Puts" labels, sentence-case column headers with "(Sell)" / "(Buy)" suffixes appended to Bid / Ask, continuous red/green vertical bar on the strike-column edges (red above ATM, green below), subtle orange ATM-strike row highlight that extends across all three tables, full-row ITM tint on calls/puts sides, uniform 24px rows, SF Pro / Inter typography, volume + OI magnitude bars, cross-section row hover via box-shadow-inset, pinned Sigma navbar + stock-info header (Ctrl+K always reachable), hidden orange price line/pill, sigma-boundary pills hide-by-default-show-on-hover. Dashboard page: compact Position + Orders tables (~50px rows down from ~79px) with expandable rows preserved. Sigma site navbar pinned site-wide; the trade-only stock-info header pin no longer leaks onto the dashboard (was hiding Market Performance + Watch List).
 // @author       jorgegarcias60
 // @homepageURL  https://github.com/jorgegarcias60/Sigma.trade.mask
@@ -662,18 +662,27 @@
       rows.forEach(function (r, i) {
         const cell = r.cells[colIdx];
         if (!cell) return;
-        // Clear any legacy `background` shorthand from earlier versions (which would clobber
-        // Sigma's ITM background-color). We only set background-image so the color from CSS
-        // classes (ITM tint, hover tint) shows through underneath the bar.
-        if (cell.style.background) cell.style.background = '';
         const v = vals[i];
         if (v > 0) {
           const pct = Math.min(100, (v / max) * 100);
-          cell.style.backgroundImage = `linear-gradient(to ${fillFrom}, ${color} ${pct}%, transparent ${pct}%)`;
-          cell.setAttribute(attr, '1');
+          // PERF (v1.11.1): only write the gradient when the bar's fill % actually changed.
+          // This pass re-runs on every observer tick, but Volume/OI magnitudes are stable
+          // between most ticks — so the previous code repainted ~800 cells every pass for no
+          // visible change, and (worse) forced off-screen rows back into layout, defeating the
+          // content-visibility:auto optimization. We stash the last % in dataset.barPct (a
+          // cell only ever carries ONE bar type, so no key collision) and compare with a small
+          // threshold to ignore floating-point churn. A changed `max` (bar rescale) still moves
+          // every %, so rescaling still repaints correctly.
+          const prev = parseFloat(cell.dataset.barPct);
+          if (isNaN(prev) || Math.abs(prev - pct) > 0.05) {
+            cell.style.backgroundImage = `linear-gradient(to ${fillFrom}, ${color} ${pct}%, transparent ${pct}%)`;
+            cell.dataset.barPct = pct.toFixed(2);
+          }
+          if (!cell.hasAttribute(attr)) cell.setAttribute(attr, '1');
         } else if (cell.hasAttribute(attr)) {
           cell.style.backgroundImage = '';
           cell.removeAttribute(attr);
+          delete cell.dataset.barPct;
         }
       });
     }
@@ -691,6 +700,14 @@
   // bodies (matched by row index) is also tagged data-atm so the orange ATM band extends
   // continuously across CALLS | STRIKE | PUTS. CSS in the style block does the actual coloring
   // via [data-side] / [data-atm] selectors and ::before/::after pseudo elements.
+  // PERF (v1.11.1): cache of the parsed strikes, persisted on window so it survives the many
+  // idempotent re-runs of this pass. The expensive part here is parsing each
+  // strike via innerText (innerText is layout-aware and forces a reflow — but we MUST keep it,
+  // NOT textContent: a position badge like "-2" concatenates with strike "27.5" into "-227.5"
+  // with no separator under textContent, mis-parsing the strike; innerText's block boundaries
+  // keep them as separate tokens. See docs/sigma-handoff.md). Strikes are immutable between
+  // chain rebuilds, so we parse them once per rebuild (detected by a new tbody element or a
+  // changed row count) instead of on every observer tick.
   function applyAtmHighlight() {
     if (!TASTYTRADE_STYLE) return;
     const strikeBody = document.querySelector('[class*="chain_table_strike__"] table tbody');
@@ -700,23 +717,42 @@
 
     // Underlying price — same selector as sigma-extrinsic.user.js. Sigma renders the price in
     // a couple of places; this picks the chain-side small price element, not the big main one.
+    // This is the only thing that genuinely ticks, so we always re-read it (cheap).
     const priceEl = document.querySelector('[class*="trade_price__"]:not([class*="trade_priceMain__"])');
     const underlying = priceEl ? parseFloat((priceEl.textContent || '').replace(/[^0-9.\-]/g, '')) : NaN;
     if (!isFinite(underlying)) return;
 
-    // Parse each strike. Same defensive logic as the extrinsic script: innerText split on
-    // whitespace, take the last clean numeric token. Avoids the "-2 + 27.5 = -227.5" trap
-    // where a position badge concatenates with the strike in textContent.
+    if (!window.__sigmaAtmCache) window.__sigmaAtmCache = { body: null, sig: '', strikes: [] };
+    const cache = window.__sigmaAtmCache;
     const rows = Array.from(strikeBody.rows);
-    const strikes = rows.map(function (r) {
-      const cell = r.cells[0];
-      if (!cell) return NaN;
-      const tokens = (cell.innerText || '').split(/\s+/).filter(Boolean);
-      for (let i = tokens.length - 1; i >= 0; i--) {
-        if (/^\d+(\.\d+)?$/.test(tokens[i])) return parseFloat(tokens[i]);
-      }
-      return NaN;
-    });
+    const n = rows.length;
+
+    // Cheap, tick-stable signature to decide whether the strike ladder changed. Row count alone
+    // would miss an expiration change that reuses the same tbody with the same count but a
+    // different ladder; the underlying symbol on the other hand almost always changes the count
+    // or the tbody element. We fold in the first + last strike cells' textContent (reflow-free,
+    // unlike innerText): those rows sit far from the ticking price marker, so the signature is
+    // stable between quote ticks but flips the moment the ladder itself changes.
+    const firstCell = n ? rows[0].cells[0] : null;
+    const lastCell  = n ? rows[n - 1].cells[0] : null;
+    const sig = n + '|' + (firstCell ? firstCell.textContent : '') + '|' + (lastCell ? lastCell.textContent : '');
+
+    // Re-parse strikes only when that signature (or the tbody element) changes — i.e. on a real
+    // structural rebuild (symbol / expiration / "All strikes" toggle), not on every tick.
+    if (cache.body !== strikeBody || cache.sig !== sig) {
+      cache.strikes = rows.map(function (r) {
+        const cell = r.cells[0];
+        if (!cell) return NaN;
+        const tokens = (cell.innerText || '').split(/\s+/).filter(Boolean);
+        for (let i = tokens.length - 1; i >= 0; i--) {
+          if (/^\d+(\.\d+)?$/.test(tokens[i])) return parseFloat(tokens[i]);
+        }
+        return NaN;
+      });
+      cache.body = strikeBody;
+      cache.sig = sig;
+    }
+    const strikes = cache.strikes;
 
     // ATM = strike with the smallest |strike - underlying|. Ties resolve to the first match
     // (lower strike) which matches typical broker convention.
@@ -729,29 +765,38 @@
     }
     if (atmIdx === -1) return;
 
+    // Apply the tags. The original re-wrote every data-side/data-atm attribute on every tick;
+    // that's the ~600-setAttribute-per-tick cost the audit flagged. Instead we READ first
+    // (getAttribute/hasAttribute are O(1) and force no reflow) and only WRITE when the attribute
+    // is actually wrong. Steady-state that's near-zero writes, yet it still self-heals if Sigma
+    // replaces a row element in place (the fresh element reads as "missing" and gets re-tagged),
+    // so we don't depend on the ATM index having moved.
     const atmStrike = strikes[atmIdx];
+    function setAtm(el, want) {
+      const has = el.hasAttribute('data-atm');
+      if (want && !has) el.setAttribute('data-atm', '1');
+      else if (!want && has) el.removeAttribute('data-atm');
+    }
     rows.forEach(function (r, i) {
       const cell = r.cells[0];
       if (!cell) return;
       const s = strikes[i];
       if (!isFinite(s)) {
-        cell.removeAttribute('data-side');
-        cell.removeAttribute('data-atm');
+        if (cell.hasAttribute('data-side')) cell.removeAttribute('data-side');
+        setAtm(cell, false);
         return;
       }
       // "above" = visually above the ATM row in the table = lower strike numbers (rendered
       // at the top). "below" = visually below the ATM row = higher strike numbers.
-      cell.setAttribute('data-side', s < atmStrike ? 'above' : 'below');
-      if (i === atmIdx) cell.setAttribute('data-atm', '1');
-      else cell.removeAttribute('data-atm');
+      const side = s < atmStrike ? 'above' : 'below';
+      if (cell.getAttribute('data-side') !== side) cell.setAttribute('data-side', side);
+      setAtm(cell, i === atmIdx);
     });
 
+    // The cross-section orange band on calls/puts (one tagged row each, matched by index).
     function tagBodyRow(body, idx) {
       if (!body) return;
-      Array.from(body.rows).forEach(function (r, i) {
-        if (i === idx) r.setAttribute('data-atm', '1');
-        else r.removeAttribute('data-atm');
-      });
+      Array.from(body.rows).forEach(function (r, i) { setAtm(r, i === idx); });
     }
     tagBodyRow(callsBody, atmIdx);
     tagBodyRow(putsBody,  atmIdx);
